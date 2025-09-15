@@ -1,30 +1,27 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime
 from pymongo import ReturnDocument
+from app.core.config import MONGO_URI, DB_NAME
 
-# MongoDB 연결 URI
-MONGO_URI = "mongodb+srv://cherry:1234@panguin5225.m6oav.mongodb.net/?retryWrites=true&w=majority&appName=Panguin5225"
-
-# 전역 client
 client = AsyncIOMotorClient(MONGO_URI)
-db = client["musinsa_db"]
+db = client[DB_NAME]
 
-# collections
-users_collection = db["users"]        # 사용자 계정
-products_collection = db["product"]   # 상품
-reviews_collection = db["reviews"]    # 리뷰
-images_collection = db["images"]      # 이미지
-results_collection = db["results"]    # 분석 결과
+users_collection    = db["users"]
+products_collection = db["products"]
+reviews_collection  = db["reviews_ai_sentiment"]
+images_collection   = db["images"]
+results_collection  = db["results"]
+buyers_collection = db["buyers"]
 
-# 유틸 함수 (예시)
-async def get_user(employeeId: str):
-    return await users_collection.find_one({"employeeId": employeeId})
+async def insert_result(doc: dict):
+    doc.setdefault("createdAt", datetime.utcnow())
+    await results_collection.insert_one(doc)
+    return doc
 
-async def create_user(user_data: dict):
-    user_data["createdAt"] = datetime.utcnow()
-    user_data["updatedAt"] = datetime.utcnow()
-    await users_collection.insert_one(user_data)
-    return user_data
+async def run_aggregation(collection: str, pipeline: list):
+    col = db[collection]
+    cursor = col.aggregate(pipeline)
+    return [doc async for doc in cursor]
 
 async def update_user(employeeId: str, update_data: dict):
     update_data["updatedAt"] = datetime.utcnow()

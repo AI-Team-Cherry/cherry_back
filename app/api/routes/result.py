@@ -1,11 +1,15 @@
-from fastapi import APIRouter
-from app.db.mongodb import db
+from fastapi import APIRouter, Query
+from typing import Optional, List, Dict, Any
+from app.db.mongodb import results_collection
 
 router = APIRouter()
 
-@router.get("/{userId}")
-async def get_results(userId: str):
-    results = await db.results.find({"userId": userId}).to_list(100)
-    for r in results:
-        r["_id"] = str(r["_id"])
-    return {"results": results}
+@router.get("/list")
+async def list_results(userId: str, limit: int = 20):
+    cursor = results_collection.find({"userId": userId}).sort("createdAt", -1).limit(limit)
+    data: List[Dict[str, Any]] = [doc async for doc in cursor]
+    # ObjectId 등 직렬화는 프런트에서 필요 시 처리 or 여기서 str 변환
+    for d in data:
+        if "_id" in d:
+            d["_id"] = str(d["_id"])
+    return {"status":"ok", "count": len(data), "items": data}

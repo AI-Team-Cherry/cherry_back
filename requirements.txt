@@ -1,0 +1,26 @@
+# Web framework
+fastapi==0.114.2
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+
+# Database
+motor==3.6.0
+pymongo==4.9.1
+python-dotenv==1.0.1
+
+# Security
+passlib[bcrypt]==1.7.4
+PyJWT==2.9.0
+python-jose==3.3.0
+
+# Data / AI
+transformers==4.44.2
+torch>=2.2.0
+langgraph==0.2.39
+hnswlib==0.7.0
+chromadb==0.5.5
+sentence-transformers==3.1.1
+
+# Utils
+pydantic==2.9.2
+numpy>=1.26.4

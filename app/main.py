@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import auth, ingest, query, result
+from app.api.routes import auth, ingest, query, result, debug, analytics, report_generator, visualization, integrated_system
+from app.services.ai_model_service import ai_model_service
 
 app = FastAPI(
     title="Musinsa AI Backend",
@@ -11,7 +12,7 @@ app = FastAPI(
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 실제 배포 시 도메인 제한 필요
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -22,7 +23,12 @@ app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(ingest.router, prefix="/ingest", tags=["Ingest"])
 app.include_router(query.router, prefix="/query", tags=["Query"])
 app.include_router(result.router, prefix="/result", tags=["Result"])
+app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
+app.include_router(report_generator.router, prefix="/report", tags=["Report"])
+app.include_router(visualization.router, prefix="/visualization", tags=["Visualization"])
+app.include_router(integrated_system.router, prefix="/integrated", tags=["Integrated"])
+app.include_router(debug.router, prefix="/debug", tags=["Debug"])
 
-@app.get("/")
-async def root():
-    return {"message": "Musinsa AI Backend is running 🚀"}
+@app.on_event("startup")
+async def startup_event():
+    ai_model_service.load_models()
