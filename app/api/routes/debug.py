@@ -1,17 +1,22 @@
+# app/api/routes/debug.py
 from fastapi import APIRouter
-from app.db.mongodb import db
+from pydantic import BaseModel
+from typing import Dict, Any
+from datetime import datetime
 
-router = APIRouter()
+router = APIRouter(prefix="/debug", tags=["Debug"])
 
-@router.get("/db-stats")
-async def db_stats():
-    collections = await db.list_collection_names()
-    stats = {}
-    for c in collections:
-        count = await db[c].count_documents({})
-        sample = await db[c].find_one() or {}
-        stats[c] = {
-            "count": count,
-            "sample_keys": list(sample.keys())
-        }
-    return {"collections": collections, "stats": stats}
+class DebugRequest(BaseModel):
+    text: str
+    model: str = "intfloat/multilingual-e5-small"
+
+@router.post("/model")
+async def debug_model(req: DebugRequest) -> Dict[str, Any]:
+    """모델 디버그 API (목업)"""
+    # TODO: 실제 HuggingFace/내부 모델 호출 로직으로 교체 가능
+    return {
+        "input_text": req.text,
+        "model": req.model,
+        "output": f"[{req.model}] '{req.text}' → 분석 결과 예시",
+        "timestamp": datetime.utcnow().isoformat()
+    }

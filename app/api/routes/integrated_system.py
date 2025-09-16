@@ -1,32 +1,31 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
+# app/api/routes/integrated_system.py
+from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
-from app.services.analytics_service import analyze_query
-from app.services.analysis_result_generator import generate_analysis_result
-from app.services.report_service import generate_report
+from datetime import datetime
 
-router = APIRouter()
+router = APIRouter(prefix="/integrated_system", tags=["Integrated System"])
 
-class IntegratedIn(BaseModel):
-    query: str
-    report_title: str
+# 메모리 캐시 (실제로는 DB나 외부 시스템 상태 확인해야 함)
+SYSTEM_STATUS: Dict[str, Any] = {
+    "status": "idle",
+    "lastSync": None,
+    "message": "시스템 대기 중"
+}
 
-@router.post("/")
-async def run_integrated(body: IntegratedIn) -> Dict[str, Any]:
-    # 분석
-    res = await analyze_query(body.query)
-    analysis_result = generate_analysis_result(
-        body.query,
-        res["mongo"]["results"],
-        res["rag"]
-    )
+@router.get("/status")
+async def get_status() -> Dict[str, Any]:
+    """외부 시스템 연동 상태 확인"""
+    return SYSTEM_STATUS
 
-    # 리포트 생성
-    report = generate_report(body.report_title, analysis_result)
-
-    # 통합 반환
-    return {
-        "status": "ok",
-        "analysis": analysis_result,
-        "report": report
-    }
+@router.post("/sync")
+async def trigger_sync() -> Dict[str, Any]:
+    """외부 시스템 동기화 트리거"""
+    try:
+        SYSTEM_STATUS.update({
+            "status": "synced",
+            "lastSync": datetime.utcnow().isoformat(),
+            "message": "동기화 성공"
+        })
+        return SYSTEM_STATUS
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"동기화 실패: {str(e)}")

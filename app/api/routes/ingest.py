@@ -1,57 +1,32 @@
+# app/api/routes/ingest.py
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from typing import Optional
-import os, uuid
-from app.db.mongodb import reviews_collection, images_collection
-from app.services.review_feature import analyze_review
-from app.services.image_feature import analyze_image
-from app.services.ctr_score import score_from_features
+from typing import Dict, Any
+from datetime import datetime
+import os
+import shutil
+import uuid
 
-router = APIRouter()
+router = APIRouter(prefix="/ingest", tags=["Ingest"])
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-@router.post("/review")
-async def ingest_review(
-    userId: str = Form(...),
-    productId: str = Form(...),
-    content: str = Form(...),
-    rating: int = Form(5)
-):
-    features = await analyze_review(content)
-    doc = {
-        "userId": userId,
-        "productId": productId,
-        "content": content,
-        "rating": rating,
-        "features": features
-    }
-    await reviews_collection.insert_one(doc)
-    return {"status": "ok", "ingested": {"type": "review", "features": features}}
+@router.post("/")
+async def ingest_file(file: UploadFile = File(...), kind: str = Form("generic")) -> Dict[str, Any]:
+    """데이터 업로드 & 저장"""
+    try:
+        job_id = str(uuid.uuid4())
+        save_path = os.path.join(UPLOAD_DIR, f"{job_id}_{file.filename}")
 
-@router.post("/image")
-async def ingest_image(
-    userId: str = Form(...),
-    productId: Optional[str] = Form(None),
-    file: UploadFile = File(...)
-):
-    # 파일 저장
-    ext = os.path.splitext(file.filename)[1] or ".jpg"
-    fname = f"{uuid.uuid4().hex}{ext}"
-    fpath = os.path.join(UPLOAD_DIR, fname)
-    with open(fpath, "wb") as f:
-        f.write(await file.read())
+        with open(save_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
 
-    # 피처 + 점수화
-    features = await analyze_image(fpath)
-    ctr = score_from_features(features)
-
-    doc = {
-        "userId": userId,
-        "productId": productId,
-        "filePath": fpath,
-        "features": features,
-        "ctrScore": ctr
-    }
-    await images_collection.insert_one(doc)
-    return {"status": "ok", "ingested": {"type": "image", "filePath": fpath, "features": features, "ctrScore": ctr}}
+        # TODO: 업로드된 파일을 ETL 파이프라인에 넘기거나 Mongo에 기록하는 로직 추가 가능
+        return {
+            "jobId": job_id,
+            "message": f"{kind} 파일 업로드 성공",
+            "filePath": save_path,
+            "uploadedAt": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"업로드 실패: {str(e)}")

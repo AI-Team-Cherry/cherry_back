@@ -1,26 +1,53 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
-from app.services.report_service import generate_report
-from app.services.analytics_service import analyze_query
-from app.services.analysis_result_generator import generate_analysis_result
+from datetime import datetime
+from pydantic import BaseModel, Field
+import uuid
 
-router = APIRouter()
+router = APIRouter(prefix="/report_generator", tags=["Report Generator"])
 
-class ReportIn(BaseModel):
-    title: str
-    query: str
+class ReportRequest(BaseModel):
+    from_: str = Field(..., alias="from")
+    to: str
+    format: str = "pdf"
 
-@router.post("/")
-async def generate(body: ReportIn) -> Dict[str, Any]:
-    # 분석 실행
-    res = await analyze_query(body.query)
-    analysis_result = generate_analysis_result(
-        body.query,
-        res["mongo"]["results"],
-        res["rag"]
+    class Config:
+        populate_by_name = True
+
+# 메모리 캐시 (실제로는 MongoDB 같은 DB에 저장하는 게 바람직)
+REPORTS: Dict[str, Dict[str, Any]] = {}
+
+@router.get("/list")
+async def list_reports() -> Dict[str, Any]:
+    """보고서 목록 조회"""
+    return {"items": list(REPORTS.values())}
+
+@router.post("/generate")
+async def generate_report(req: ReportRequest):
+    report_id = str(uuid.uuid4())
+    REPORTS[report_id] = {
+        "id": report_id,
+        "title": f"Report {req.from_} ~ {req.to}",
+        "createdAt": datetime.utcnow().isoformat(),
+        "format": req.format,
+    }
+    return {"reportId": report_id, "message": "보고서 생성 완료"}
+
+@router.get("/download/{report_id}")
+async def download_report(report_id: str):
+    """보고서 다운로드 (지금은 목업)"""
+    report = REPORTS.get(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    from fastapi.responses import StreamingResponse
+    import io
+
+    content = f"Report {report['title']} ({report['format']})\nGenerated at {report['createdAt']}"
+    return StreamingResponse(
+        io.BytesIO(content.encode()),
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": f"attachment; filename=report_{report_id}.{report['format']}"
+        }
     )
-
-    # 리포트 생성
-    report = generate_report(body.title, analysis_result)
-    return {"status": "ok", "report": report}

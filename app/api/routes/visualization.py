@@ -1,16 +1,38 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
-from typing import Dict, Any, List
-from app.viz.chart_generator import generate_chart
+# app/api/routes/visualization.py
+from fastapi import APIRouter, Query
+from typing import Any, Dict, List
 
-router = APIRouter()
+from app.db.mongodb import db
 
-class VizIn(BaseModel):
-    query: str
-    data: List[Dict[str, Any]]
-    chart_type: str = "bar"
+router = APIRouter(prefix="/visualization", tags=["Visualization"])
 
-@router.post("/")
-async def generate_viz(body: VizIn) -> Dict[str, Any]:
-    chart = generate_chart(body.chart_type, body.query, body.data)
-    return {"status": "ok", "chart": chart}
+@router.get("/chart")
+async def get_chart(
+    type: str = Query("line", description="차트 타입 (line/bar/pie)"),
+    metric: str = Query("sales", description="지표 (sales/orders/customers)")
+) -> Dict[str, Any]:
+    pipeline = []
+
+    # metric에 따라 Mongo 집계
+    if metric == "sales":
+        pipeline = [
+            {"$group": {"_id": "$order_date", "value": {"$sum": "$total_amount"}}},
+            {"$project": {"_id": 0, "label": "$_id", "value": 1}},
+            {"$sort": {"label": 1}}
+        ]
+    elif metric == "orders":
+        pipeline = [
+            {"$group": {"_id": "$order_date", "value": {"$sum": 1}}},
+            {"$project": {"_id": 0, "label": "$_id", "value": 1}},
+            {"$sort": {"label": 1}}
+        ]
+    elif metric == "customers":
+        pipeline = [
+            {"$group": {"_id": "$order_date", "value": {"$addToSet": "$buyer_id"}}},
+            {"$project": {"_id": 0, "label": "$_id", "value": {"$size": "$value"}}},
+            {"$sort": {"label": 1}}
+        ]
+
+    docs = await db.orders.aggregate(pipeline).to_list(None)
+
+    return {"data": docs}

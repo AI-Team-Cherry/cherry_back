@@ -20,14 +20,14 @@ app.add_middleware(
 
 # 라우터 등록
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
-app.include_router(ingest.router, prefix="/ingest", tags=["Ingest"])
+app.include_router(ingest.router)
 app.include_router(query.router, prefix="/query", tags=["Query"])
 app.include_router(result.router, prefix="/result", tags=["Result"])
-app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
-app.include_router(report_generator.router, prefix="/report", tags=["Report"])
-app.include_router(visualization.router, prefix="/visualization", tags=["Visualization"])
-app.include_router(integrated_system.router, prefix="/integrated", tags=["Integrated"])
-app.include_router(debug.router, prefix="/debug", tags=["Debug"])
+app.include_router(analytics.router)
+app.include_router(report_generator.router)
+app.include_router(visualization.router)
+app.include_router(integrated_system.router)
+app.include_router(debug.router)
 app.include_router(sentiment.router)
 
 @app.on_event("startup")
