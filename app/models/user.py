@@ -18,3 +18,10 @@ class UserOut(BaseModel):
     department: Optional[str] = None
     role: str
     lastLogin: Optional[datetime]
+
+class UserIn(BaseModel):
+    employeeId: str
+    name: str
+    department: Optional[str] = None
+    role: str = "user"
+    password: str
