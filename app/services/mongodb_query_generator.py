@@ -8,6 +8,8 @@ def match_in_query(pattern: str, query: str) -> bool:
 
 
 # ====== RULES ======
+
+# ✅ 정렬
 SORT_RULES = {
     r"잘\s*팔린": {"$sort": {"sales_cum": -1}},
     r"판매량\s*높": {"$sort": {"sales_cum": -1}},
@@ -27,23 +29,27 @@ SORT_RULES = {
     r"오래된": {"$sort": {"createdAt": 1}},
 }
 
+# ✅ 필터 (항상 $match로 감싸기)
 MATCH_RULES = {
-    r"남자": {"gender": "M"},
-    r"여자": {"gender": "F"},
-    r"유니섹스": {"gender": "UNISEX"},
-    r"상의": {"category_l1": {"$regex": "상의"}},
-    r"하의": {"category_l1": {"$regex": "하의"}},
-    r"신발": {"category_l1": {"$regex": "신발"}},
-    r"가방": {"category_l1": {"$regex": "가방"}},
-    r"액세서리": {"category_l1": {"$regex": "액세서리"}},
+    r"남자": {"$match": {"gender": "M"}},
+    r"여자": {"$match": {"gender": "F"}},
+    r"유니섹스": {"$match": {"gender": "UNISEX"}},
+    r"상의": {"$match": {"category_l1": {"$regex": "상의"}}},
+    r"하의": {"$match": {"category_l1": {"$regex": "하의"}}},
+    r"신발": {"$match": {"category_l1": {"$regex": "신발"}}},
+    r"가방": {"$match": {"category_l1": {"$regex": "가방"}}},
+    r"액세서리": {"$match": {"category_l1": {"$regex": "액세서리"}}},
 }
 
+# ✅ 개수 제한
 LIMIT_RULES = {
     r"(상위\s*10|10개)": {"$limit": 10},
+    r"(상위\s*8|8개)": {"$limit": 8},
     r"(상위\s*5|5개)": {"$limit": 5},
     r"(상위\s*3|3개)": {"$limit": 3},
 }
 
+# ✅ 집계
 AGG_RULES = {
     r"평균\s*가격": {"$group": {"_id": None, "avg_price": {"$avg": "$price"}}},
     r"평균\s*평점": {"$group": {"_id": None, "avg_rating": {"$avg": "$rating_avg"}}},
@@ -53,15 +59,30 @@ AGG_RULES = {
     r"최저가": {"$group": {"_id": None, "min_price": {"$min": "$price"}}},
 }
 
+# ✅ 기간 필터
 DATE_RULES = {
     r"오늘": {
-        "createdAt": {
-            "$gte": datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        "$match": {
+            "createdAt": {
+                "$gte": datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            }
         }
     },
-    r"이번주": {"createdAt": {"$gte": datetime.datetime.now() - datetime.timedelta(days=7)}},
-    r"이번달": {"createdAt": {"$gte": datetime.datetime.now().replace(day=1)}},
-    r"올해": {"createdAt": {"$gte": datetime.datetime(datetime.datetime.now().year, 1, 1)}},
+    r"이번주": {
+        "$match": {
+            "createdAt": {"$gte": datetime.datetime.now() - datetime.timedelta(days=7)}
+        }
+    },
+    r"이번달": {
+        "$match": {"createdAt": {"$gte": datetime.datetime.now().replace(day=1)}}
+    },
+    r"올해": {
+        "$match": {
+            "createdAt": {
+                "$gte": datetime.datetime(datetime.datetime.now().year, 1, 1)
+            }
+        }
+    },
 }
 
 
@@ -103,18 +124,15 @@ def to_pipeline(query: str) -> Dict[str, Any]:
             ],
         }
 
-    # 룰 기반
+    # 룰 기반 처리
     pipeline: List[Dict[str, Any]] = []
 
     for rules in [MATCH_RULES, DATE_RULES, SORT_RULES, LIMIT_RULES, AGG_RULES]:
         for pattern, clause in rules.items():
             if match_in_query(pattern, query):
-                # $match 여러 개 붙으면 누적됨
-                if "$match" in clause:
-                    pipeline.append({"$match": clause})
-                else:
-                    pipeline.append(clause)
+                pipeline.append(clause)
 
+    # fallback
     if not pipeline:
         pipeline = [{"$limit": 5}]
 
