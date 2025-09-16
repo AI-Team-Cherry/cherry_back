@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import auth, ingest, query, result, debug, analytics, report_generator, visualization, integrated_system
+from app.api.routes import auth, ingest, query, result, debug, analytics, report_generator, visualization, integrated_system, sentiment 
 from app.services.ai_model_service import ai_model_service
 
 app = FastAPI(
@@ -28,6 +28,7 @@ app.include_router(report_generator.router, prefix="/report", tags=["Report"])
 app.include_router(visualization.router, prefix="/visualization", tags=["Visualization"])
 app.include_router(integrated_system.router, prefix="/integrated", tags=["Integrated"])
 app.include_router(debug.router, prefix="/debug", tags=["Debug"])
+app.include_router(sentiment.router)
 
 @app.on_event("startup")
 async def startup_event():

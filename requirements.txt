@@ -20,10 +20,12 @@ langgraph==0.2.39
 hnswlib==0.7.0
 chromadb==0.5.5
 sentence-transformers==3.1.1
+pandas==2.2.2
 
 # Utils
 pydantic==2.9.2
 numpy>=1.26.4
 
-sentencepiece
-sacremoses
+# Hugging Face model deps
+sentencepiece==0.2.0
+sacremoses==0.1.1

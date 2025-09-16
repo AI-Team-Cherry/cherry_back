@@ -1,7 +1,10 @@
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from datetime import datetime
 from pymongo import ReturnDocument
 from app.core.config import MONGO_URI, DB_NAME
+from bson import ObjectId
+from typing import Optional
+
 
 client = AsyncIOMotorClient(MONGO_URI)
 db = client[DB_NAME]
@@ -36,3 +39,36 @@ async def update_last_login(employeeId: str):
         {"employeeId": employeeId},
         {"$set": {"lastLogin": datetime.utcnow(), "updatedAt": datetime.utcnow()}}
     )
+
+async def get_db(db_name: Optional[str] = None) -> AsyncIOMotorDatabase:
+    """
+    현재 모듈에서 사용하는 전역 Mongo 클라이언트를 활용해 DB 핸들 반환
+    기존 코드에서 client를 무엇으로 부르는지에 따라 수정하세요.
+    """
+    from app.core.config import settings  # lazy import
+    global _mongo_client
+    try:
+        _mongo_client
+    except NameError:
+        _mongo_client = AsyncIOMotorClient(settings.MONGODB_URI)
+    return _mongo_client[db_name or settings.MONGODB_DBNAME]
+
+def to_plain_dict(doc):
+    """
+    FastAPI 응답 직렬화용: ObjectId → str 로 바꿔주는 간단 헬퍼
+    """
+    if not doc:
+        return doc
+    out = {}
+    for k, v in doc.items():
+        if isinstance(v, ObjectId):
+            out[k] = str(v)
+        else:
+            out[k] = v
+    return out
+
+async def get_collection(name: str):
+    """
+    MongoDB 컬렉션 핸들을 반환
+    """
+    return db[name]
