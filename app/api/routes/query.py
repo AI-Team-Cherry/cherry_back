@@ -2,6 +2,8 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Dict, Any, List
 from datetime import datetime
+from bson import ObjectId  # ✅ ObjectId 변환용
+
 from app.langgraph.workflows import workflow
 from app.db.mongodb import run_aggregation, insert_result
 from app.services.rag_service import search as rag_search
@@ -16,6 +18,21 @@ class QueryIn(BaseModel):
     userId: str
     query: str
 
+
+# ✅ Mongo 결과 정규화 함수 (ObjectId → str 변환)
+def normalize_mongo_docs(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    normalized = []
+    for d in docs:
+        clean = {}
+        for k, v in d.items():
+            if isinstance(v, ObjectId):
+                clean[k] = str(v)
+            else:
+                clean[k] = v
+        normalized.append(clean)
+    return normalized
+
+
 @router.post("/")
 async def run_query(body: QueryIn):
     state = workflow.invoke({"query": body.query})
@@ -27,6 +44,7 @@ async def run_query(body: QueryIn):
         collection = state["mongo_results"]["collection"]
         pipeline = state["mongo_results"]["pipeline"]
         mongo_results = await run_aggregation(collection, pipeline)
+        mongo_results = normalize_mongo_docs(mongo_results)  # ✅ ObjectId 처리
 
     # RAG
     rag_docs = await rag_search(body.query, top_k=5)
@@ -35,8 +53,16 @@ async def run_query(body: QueryIn):
 
     # 요약
     summary = summarize_results(mongo_results)
-    prompt = build_prompt(body.query, summary, contexts)
-    qa = await answer_question(prompt)
+
+    # 단계형 Q&A
+    qa = await answer_question(
+        query=body.query,
+        mongo_summary=summary,
+        contexts=contexts,
+        mongo_results=mongo_results
+    )
+    if qa is None:
+        qa = {"answer": "⚠️ 답변 생성 실패"}
 
     # 시각화 (데이터 없으면 생략)
     viz = []
@@ -56,11 +82,14 @@ async def run_query(body: QueryIn):
         }]
 
     # 리포트
-    report = generate_report(f"{body.query} 리포트", {
-        "summary": summary,
-        "insights": qa.get("answer", ""),
-        "recommendations": ["추천 1", "추천 2"]
-    })
+    report = generate_report(
+        f"{body.query} 리포트",
+        {
+            "summary": summary,
+            "insights": qa.get("answer", ""),
+            "recommendations": ["추천 1", "추천 2"]
+        }
+    )
 
     # 저장 & 응답
     result_doc = {
