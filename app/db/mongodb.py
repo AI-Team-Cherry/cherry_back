@@ -15,6 +15,7 @@ reviews_collection  = db["reviews_ai_sentiment"]
 images_collection   = db["images"]
 results_collection  = db["results"]
 buyers_collection = db["buyers"]
+review_image_collection = db["review_image_path"]
 
 async def insert_result(doc: dict):
     doc.setdefault("createdAt", datetime.utcnow())

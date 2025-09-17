@@ -3,7 +3,6 @@ from typing import Optional
 import os, uuid
 from app.db.mongodb import reviews_collection, images_collection
 from app.services.review_feature import analyze_review
-from app.services.image_feature import analyze_image
 from app.services.ctr_score import score_from_features
 
 router = APIRouter()
