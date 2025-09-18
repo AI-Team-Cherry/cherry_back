@@ -2,6 +2,7 @@
 fastapi==0.114.2
 uvicorn[standard]==0.30.6
 python-multipart==0.0.9
+matplotlib==3.9.2
 
 # Database
 motor==3.6.0
