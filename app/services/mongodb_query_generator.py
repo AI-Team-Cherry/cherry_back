@@ -86,9 +86,105 @@ DATE_RULES = {
 }
 
 
+def generate_return_analysis_pipeline(query: str) -> Dict[str, Any]:
+    """
+    반품률 분석을 위한 파이프라인 생성
+    현재 데이터에 반품 정보가 없으므로, 유사한 지표를 사용하여 분석
+    """
+    if "공통점" in query or "패턴" in query:
+        # 낮은 평점이나 판매량이 적은 상품들의 공통점 분석 (반품률 대신)
+        return {
+            "collection": "product",
+            "pipeline": [
+                # 1. 문제가 있을 수 있는 상품들 필터링 (낮은 평점 또는 낮은 판매량)
+                {
+                    "$match": {
+                        "$or": [
+                            {"rating_avg": {"$lt": 4.0, "$gt": 0}},  # 평점이 4.0 미만
+                            {"sales_cum": {"$lt": 100}}  # 판매량이 100개 미만
+                        ]
+                    }
+                },
+                # 2. 카테고리별 그룹핑하여 패턴 분석
+                {
+                    "$group": {
+                        "_id": {
+                            "category": "$category_l1",
+                            "price_range": {
+                                "$switch": {
+                                    "branches": [
+                                        {"case": {"$lt": ["$price", 50000]}, "then": "저가"},
+                                        {"case": {"$lt": ["$price", 150000]}, "then": "중가"},
+                                        {"case": {"$gte": ["$price", 150000]}, "then": "고가"}
+                                    ],
+                                    "default": "기타"
+                                }
+                            }
+                        },
+                        "count": {"$sum": 1},
+                        "avg_rating": {"$avg": "$rating_avg"},
+                        "avg_price": {"$avg": "$price"},
+                        "avg_sales": {"$avg": "$sales_cum"},
+                        "products": {
+                            "$push": {
+                                "name": "$name",
+                                "brand": "$brand",
+                                "price": "$price",
+                                "rating": "$rating_avg",
+                                "sales": "$sales_cum"
+                            }
+                        }
+                    }
+                },
+                # 3. 문제 상품이 많은 카테고리 순으로 정렬
+                {"$sort": {"count": -1}},
+                # 4. 상위 10개 패턴만 반환
+                {"$limit": 10}
+            ]
+        }
+    else:
+        # 일반적인 문제 상품 목록
+        return {
+            "collection": "product",
+            "pipeline": [
+                {
+                    "$match": {
+                        "$or": [
+                            {"rating_avg": {"$lt": 4.0, "$gt": 0}},
+                            {"sales_cum": {"$lt": 50}}
+                        ]
+                    }
+                },
+                {
+                    "$project": {
+                        "name": 1,
+                        "brand": 1,
+                        "category_l1": 1,
+                        "price": 1,
+                        "rating_avg": 1,
+                        "sales_cum": 1,
+                        "reviews_count": 1,
+                        "problem_score": {
+                            "$add": [
+                                {"$cond": [{"$lt": ["$rating_avg", 3.0]}, 3, 0]},
+                                {"$cond": [{"$lt": ["$rating_avg", 4.0]}, 1, 0]},
+                                {"$cond": [{"$lt": ["$sales_cum", 10]}, 2, 0]}
+                            ]
+                        }
+                    }
+                },
+                {"$sort": {"problem_score": -1, "rating_avg": 1}},
+                {"$limit": 20}
+            ]
+        }
+
 # ====== PIPELINE BUILDER ======
-def to_pipeline(query: str) -> Dict[str, Any]:
+def to_pipeline(query: str, intent: str = "기타", complexity: str = "단순") -> Dict[str, Any]:
     target_collection = "product"
+
+    # 반품률 분석 특별 처리
+    if intent == "반품_분석" or any(k in query for k in ["반품률", "반품", "환불"]):
+        return generate_return_analysis_pipeline(query)
 
     # 특수 케이스
     if "브랜드별 매출" in query:

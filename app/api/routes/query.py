@@ -1,6 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 from bson import ObjectId  # ✅ ObjectId 변환용
 
@@ -11,12 +11,13 @@ from app.langgraph.dsl import build_prompt
 from app.services.qa_model import answer_question
 from app.services.report_service import generate_report
 from app.services.analysis_helpers import summarize_results
+from app.api.routes.auth import get_current_user
 
 router = APIRouter()
 
 class QueryIn(BaseModel):
-    userId: str
     query: str
+    userId: Optional[str] = None  # 호환성을 위해 옵셔널로 유지
 
 
 # ✅ Mongo 결과 정규화 함수 (ObjectId → str 변환)
@@ -34,7 +35,7 @@ def normalize_mongo_docs(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 @router.post("/")
-async def run_query(body: QueryIn):
+async def run_query(body: QueryIn, current_user: dict = Depends(get_current_user)):
     state = workflow.invoke({"query": body.query})
 
     # Mongo 실행
@@ -87,13 +88,13 @@ async def run_query(body: QueryIn):
         {
             "summary": summary,
             "insights": qa.get("answer", ""),
-            "recommendations": ["추천 1", "추천 2"]
+            "recommendations": qa.get("recommendations", "").split('\n') if qa.get("recommendations") else []
         }
     )
 
     # 저장 & 응답
     result_doc = {
-        "userId": body.userId,
+        "userId": body.userId or current_user["employeeId"],  # 사용자 ID 우선순위: body > current_user
         "query": body.query,
         "output": {
             "mongodb_results": {
@@ -108,8 +109,8 @@ async def run_query(body: QueryIn):
             },
             "ai_analysis": {
                 "answer": qa.get("answer", ""),
-                "insights": "인사이트 예시",
-                "recommendations": "추천사항 예시"
+                "insights": qa.get("insights", ""),
+                "recommendations": qa.get("recommendations", "")
             },
             "visualizations": viz,
             "report": report

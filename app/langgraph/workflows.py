@@ -15,7 +15,9 @@ def node_classify(state: Dict[str, Any]) -> Dict[str, Any]:
 
 def node_plan(state: Dict[str, Any]) -> Dict[str, Any]:
     q = state["query"]
-    plan = to_pipeline(q)
+    intent = state.get("intent", "기타")
+    complexity = state.get("complexity", "단순")
+    plan = to_pipeline(q, intent, complexity)
     state["plan"] = plan
     return state
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import List, Dict, Any, Optional
 import re
+import os
 from transformers import pipeline
 from app.services.ai_model_service import ai_model_service
 
@@ -189,14 +190,59 @@ async def answer_question(
       4) 비거나 이상하면 한국어 템플릿 Fallback
     항상 {"answer": "..."} 반환
     """
+    # Mock AI 응답 모드 체크
+    use_mock_ai = os.getenv("USE_MOCK_AI_RESPONSES", "false").lower() == "true"
+    if use_mock_ai:
+        print("🔵 Mock AI Response Mode: 실제 AI 대신 Mock 응답 사용")
+        metrics = _derive_sales_metrics(mongo_results or [])
+        return {
+            "answer": _fallback_ko(metrics),
+            "insights": "Mock 모드에서 생성된 인사이트입니다.",
+            "recommendations": "Mock 모드에서 생성된 추천사항입니다."
+        }
+    
     if "qa_generator" not in ai_model_service.models:
-        return {"answer": "⚠️ Q&A 모델이 아직 로딩되지 않았습니다."}
+        return {
+            "answer": "⚠️ Q&A 모델이 아직 로딩되지 않았습니다.",
+            "insights": "",
+            "recommendations": ""
+        }
 
     metrics = _derive_sales_metrics(mongo_results or [])
     facts = _format_facts(mongo_results or [], metrics)
     ctxs = _condense_contexts(contexts, max_items=3, max_chars=180)
 
-    prompt_en = f"""
+    # 반품률 분석인지 확인
+    is_return_analysis = any(k in query for k in ["반품률", "반품", "환불", "공통점"])
+    
+    if is_return_analysis:
+        prompt_en = f"""
+You are a professional data analyst for Musinsa, a Korean fashion e-commerce platform.
+You are analyzing products with potential quality or satisfaction issues (using low ratings and low sales as proxy for high return rates).
+
+STRICT RULES:
+- Use ONLY the FACTS below. Analyze patterns in the data.
+- Output must contain ONLY these three sections:
+Answer:
+Insights: 
+Recommendations:
+
+QUESTION:
+{query}
+
+DATA ANALYSIS (Products with potential issues):
+{facts}
+
+CONTEXT:
+{chr(10).join(['- ' + c for c in ctxs]) if ctxs else 'None'}
+
+Focus on finding common patterns in categories, price ranges, brands, or other characteristics.
+Style: English, concise, business tone, <= 110 words total.
+
+Answer:
+"""
+    else:
+        prompt_en = f"""
 You are a professional data analyst for Musinsa, a Korean fashion e-commerce platform selling clothing and accessories.
 Your mission is to support Musinsa employees by analyzing the provided internal dataset.
 
@@ -235,11 +281,27 @@ Answer:
 
         # 외부 사이트/의심 패턴 차단
         if re.search(r"(http|www\.|\.com|\.co\.|Musingsa)", full_en, re.I):
-            return {"answer": _fallback_ko(metrics)}
+            fallback_answer = _fallback_ko(metrics)
+            fallback_parts = fallback_answer.split('\n')
+            insights_part = next((p for p in fallback_parts if p.startswith('인사이트:')), "")
+            recommendations_part = next((p for p in fallback_parts if p.startswith('추천사항:')), "")
+            return {
+                "answer": fallback_answer,
+                "insights": insights_part.replace('인사이트:', '').strip() if insights_part else "",
+                "recommendations": recommendations_part.replace('추천사항:', '').strip() if recommendations_part else ""
+            }
 
         # 섹션 비면 Fallback
         if not (parts["Answer"] or parts["Insights"] or parts["Recommendations"]):
-            return {"answer": _fallback_ko(metrics)}
+            fallback_answer = _fallback_ko(metrics)
+            fallback_parts = fallback_answer.split('\n')
+            insights_part = next((p for p in fallback_parts if p.startswith('인사이트:')), "")
+            recommendations_part = next((p for p in fallback_parts if p.startswith('추천사항:')), "")
+            return {
+                "answer": fallback_answer,
+                "insights": insights_part.replace('인사이트:', '').strip() if insights_part else "",
+                "recommendations": recommendations_part.replace('추천사항:', '').strip() if recommendations_part else ""
+            }
 
         ans_ko = _translate_to_ko(parts["Answer"])
         ins_ko = _translate_to_ko(parts["Insights"])
@@ -247,11 +309,34 @@ Answer:
 
         # 번역기 없거나 결과 빈 경우 보정
         if not ans_ko or not ins_ko or not rec_ko:
-            return {"answer": _fallback_ko(metrics)}
+            fallback_answer = _fallback_ko(metrics)
+            parts = fallback_answer.split('\n')
+            insights_part = next((p for p in parts if p.startswith('인사이트:')), "")
+            recommendations_part = next((p for p in parts if p.startswith('추천사항:')), "")
+            return {
+                "answer": fallback_answer,
+                "insights": insights_part.replace('인사이트:', '').strip() if insights_part else "",
+                "recommendations": recommendations_part.replace('추천사항:', '').strip() if recommendations_part else ""
+            }
 
         final_ko = _clean_noise(f"답변: {ans_ko}\n인사이트: {ins_ko}\n추천사항: {rec_ko}")
-        return {"answer": final_ko}
+        return {
+            "answer": final_ko,
+            "insights": ins_ko,
+            "recommendations": rec_ko
+        }
 
     except Exception:
         # 어떤 예외든 안전하게 한국어 템플릿으로
-        return {"answer": _fallback_ko(metrics)}
+        fallback_answer = _fallback_ko(metrics)
+        # fallback에서도 섹션별로 분리
+        parts = fallback_answer.split('\n')
+        answer_part = next((p for p in parts if p.startswith('답변:')), fallback_answer)
+        insights_part = next((p for p in parts if p.startswith('인사이트:')), "")
+        recommendations_part = next((p for p in parts if p.startswith('추천사항:')), "")
+        
+        return {
+            "answer": fallback_answer,
+            "insights": insights_part.replace('인사이트:', '').strip() if insights_part else "",
+            "recommendations": recommendations_part.replace('추천사항:', '').strip() if recommendations_part else ""
+        }

@@ -11,7 +11,6 @@ db = client[DB_NAME]
 
 users_collection    = db["users"]
 products_collection = db["products"]
-reviews_collection  = db["reviews_ai_sentiment"]
 images_collection   = db["images"]
 results_collection  = db["results"]
 buyers_collection = db["buyers"]
